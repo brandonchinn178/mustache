@@ -16,7 +16,7 @@ import           Data.Foldable          (for_)
 import qualified Data.HashMap.Strict    as HM (HashMap, empty,
                                                traverseWithKey)
 import           Data.List
-import           Data.Maybe             (fromMaybe)
+import           Data.Maybe             (fromMaybe, mapMaybe)
 import qualified Data.Text              as T
 import           Data.Yaml              as Y (FromJSON, Value (..), decode,
                                               parseJSON, (.!=), (.:), (.:?))
@@ -71,15 +71,22 @@ getOfficialSpecRelease :: String -> IO [(String, LangSpecFile)]
 getOfficialSpecRelease releaseURL  = do
     res <- get releaseURL
     let archive = Tar.read $ GZip.decompress (res ^. responseBody)
-    return $ Tar.foldEntries handleEntry [] (error . show) archive
+    either (error . show) (return . fromEntries) $ entriesToList archive
   where
-    handleEntry e acc =
+    entriesToList :: Tar.Entries e -> Either e [Tar.Entry]
+    entriesToList Tar.Done = Right []
+    entriesToList (Tar.Fail e) = Left e
+    entriesToList (Tar.Next entry rest) = (entry:) <$> entriesToList rest
+
+    fromEntries = mapMaybe fromEntry
+
+    fromEntry e =
       case content of
         Tar.NormalFile f _
           | takeExtension filename `elem` [".yml", ".yaml"]
               && not ("~" `isPrefixOf` takeFileName filename) ->
-                (filename, fromMaybe (error $ "Error parsing spec file " ++ filename) $ decode $ toStrict f):acc
-        _ -> acc
+                Just (filename, fromMaybe (error $ "Error parsing spec file " ++ filename) $ decode $ toStrict f)
+        _ -> Nothing
       where
         filename = Tar.entryPath e
         content = Tar.entryContent e
