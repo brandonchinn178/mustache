@@ -18,7 +18,7 @@ import qualified Data.HashMap.Strict    as HM (HashMap, empty,
 import           Data.List
 import           Data.Maybe             (fromMaybe, mapMaybe)
 import qualified Data.Text              as T
-import           Data.Yaml              as Y (FromJSON, Value (..), decode,
+import           Data.Yaml              as Y (FromJSON, Value (..), decodeEither',
                                               parseJSON, (.!=), (.:), (.:?))
 import           Network.Wreq
 import           System.FilePath
@@ -94,7 +94,9 @@ getOfficialSpecRelease releaseURL  = do
     isOptionalSpec (filename, _) = "~" `isPrefixOf` takeFileName filename
 
     decodeSpec (filename, f) =
-      let spec = fromMaybe (error $ "Error parsing spec file " ++ filename) $ decode $ toStrict f
+      let spec = case decodeEither' $ toStrict f of
+            Left e -> error $ "Error parsing spec file " ++ filename ++ ": " ++ show e
+            Right spec -> spec
       in (filename, spec)
 
 
